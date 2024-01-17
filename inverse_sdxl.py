@@ -5,7 +5,7 @@ from inverse_pipeline import InversePipeline
 from diffusers import StableDiffusionPipeline, DDIMScheduler, PNDMScheduler, EulerDiscreteScheduler, DPMSolverMultistepInverseScheduler, DPMSolverMultistepScheduler, StableDiffusionXLPipeline
 from transformers import AutoTokenizer
 from schedulers import InverseDDIMScheduler, InversePNDMScheduler, InverseEulerDiscreteScheduler
-from clip import ExceptionCLIPTextModel
+from clip import ExceptionCLIPTextModel, ExceptionCLIPTextModelWithProj
 import numpy as np
 
 if torch.cuda.is_available():
@@ -17,16 +17,16 @@ if __name__=="__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument('--input_image', type=str, default='assets/test_images/spiderman.png')
     parser.add_argument('--results_folder', type=str, default='outputs/')
-    parser.add_argument('--num_inference_steps', type=int, default=20)
-    parser.add_argument('--model_path', type=str, default="stabilityai/stable-diffusion-2-1")
+    parser.add_argument('--num_inference_steps', type=int, default=50)
+    parser.add_argument('--model_path', type=str, default="stabilityai/stable-diffusion-xl-base-1.0")
     args = parser.parse_args()
 
     exclip = ExceptionCLIPTextModel.from_pretrained(args.model_path, subfolder="text_encoder").to(device)
-    #pipe = InversePipeline.from_pretrained(args.model_path, text_encoder=exclip).to(device)
-    pipe = StableDiffusionPipeline.from_pretrained(args.model_path, text_encoder=exclip).to(device)
+    exclip_2 = ExceptionCLIPTextModelWithProj.from_pretrained(args.model_path, subfolder="text_encoder_2").to(device)
+    pipe = StableDiffusionXLPipeline.from_pretrained(args.model_path, text_encoder = exclip, text_encoder_2=exclip_2).to(device)
     pipe.scheduler = DPMSolverMultistepInverseScheduler.from_config(pipe.scheduler.config)
 
-    image = Image.open(args.input_image).resize((768,768), Image.Resampling.LANCZOS)
+    image = Image.open(args.input_image).resize((1024,1024), Image.Resampling.LANCZOS)
     x0 = np.array(image)/255
     x0 = torch.from_numpy(x0).permute(2, 0, 1).unsqueeze(dim=0).repeat(1, 1, 1, 1).to(device)
     x0 = (x0 - 0.5) * 2.
@@ -44,11 +44,13 @@ if __name__=="__main__":
     )
 
     noisy_latent = outputs["images"][0]
-
     print(noisy_latent.mean(), noisy_latent.std())
     #noise = torch.randn_like(noise)
-    denoise_pipe = StableDiffusionPipeline.from_pretrained(args.model_path, text_encoder=exclip).to(device)
-    pipe.scheduler = DPMSolverMultistepScheduler.from_config(pipe.scheduler.config)
+    
+    del pipe
+    
+    denoise_pipe = StableDiffusionXLPipeline.from_pretrained(args.model_path, text_encoder = exclip, text_encoder_2=exclip_2).to(device)
+    denoise_pipe.scheduler = DPMSolverMultistepScheduler.from_config(denoise_pipe.scheduler.config)
     outputs = denoise_pipe(
         prompt_str, 
         guidance_scale=1,
