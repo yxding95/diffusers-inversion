@@ -1,0 +1,52 @@
+import torch
+import argparse
+from PIL import Image
+from inverse_pipeline import InversePipeline
+from diffusers import StableDiffusionPipeline, DDIMScheduler, PNDMScheduler, EulerDiscreteScheduler
+from schedulers import InverseDDIMScheduler, InversePNDMScheduler, InverseEulerDiscreteScheduler
+
+if torch.cuda.is_available():
+    device = "cuda"
+else:
+    device = "cpu"
+
+if __name__=="__main__":
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--input_image', type=str, default='assets/test_images/spiderman.png')
+    parser.add_argument('--results_folder', type=str, default='outputs/')
+    parser.add_argument('--num_inference_steps', type=int, default=30)
+    parser.add_argument('--model_path', type=str, default="../../stable-diffusion-2-1-base/")
+    args = parser.parse_args()
+
+    pipe = InversePipeline.from_pretrained(args.model_path).to(device)
+    pipe.scheduler = InverseDDIMScheduler.from_config(pipe.scheduler.config)
+
+    image = Image.open(args.input_image).resize((512,512), Image.Resampling.LANCZOS)
+    prompt_str = ""
+    outputs = pipe(
+        prompt_str, 
+        guidance_scale=1,
+        num_inference_steps=args.num_inference_steps,
+        image=image,
+    )
+
+    noise_image, noise, decode_image = outputs["images"][0], outputs["noise"][0], outputs["decode_images"][0]
+    noise_image.save(args.results_folder + "noise.jpg")
+    decode_image.save(args.results_folder + "decode.jpg")
+
+    print(noise.mean(), noise.std())
+    #noise = torch.randn_like(noise)
+    denoise_pipe = StableDiffusionPipeline.from_pretrained(args.model_path).to(device)
+    pipe.scheduler = DDIMScheduler.from_config(pipe.scheduler.config)
+    outputs = denoise_pipe(
+        prompt_str, 
+        guidance_scale=1,
+        num_inference_steps=args.num_inference_steps,
+        latents=noise.unsqueeze(0)
+    ) 
+    recon_image = outputs["images"][0]
+    recon_image.save(args.results_folder + "recon.jpg")
+
+
+
+
