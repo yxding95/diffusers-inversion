@@ -46,6 +46,7 @@ if __name__=="__main__":
     ) 
     recon_image = outputs["images"][0]
     recon_image.save(args.results_folder + "recon.jpg")
+    
 
 
 
