@@ -2,6 +2,7 @@ import torch
 import argparse
 from PIL import Image
 from inverse_pipeline import InversePipeline
+from inverse_pipeline_xl import InversePipelineXL
 from diffusers import StableDiffusionPipeline, DDIMScheduler, PNDMScheduler, EulerDiscreteScheduler, DPMSolverMultistepInverseScheduler, DPMSolverMultistepScheduler, StableDiffusionXLPipeline
 from transformers import AutoTokenizer
 from schedulers import InverseDDIMScheduler, InversePNDMScheduler, InverseEulerDiscreteScheduler
@@ -23,16 +24,19 @@ if __name__=="__main__":
 
     exclip = ExceptionCLIPTextModel.from_pretrained(args.model_path, subfolder="text_encoder").to(device)
     exclip_2 = ExceptionCLIPTextModelWithProj.from_pretrained(args.model_path, subfolder="text_encoder_2").to(device)
-    pipe = StableDiffusionXLPipeline.from_pretrained(args.model_path, text_encoder = exclip, text_encoder_2=exclip_2).to(device)
+    pipe = InversePipelineXL.from_pretrained(args.model_path, text_encoder = exclip, text_encoder_2=exclip_2).to(device)
+    # pipe = StableDiffusionXLPipeline.from_pretrained(args.model_path, text_encoder = exclip, text_encoder_2=exclip_2).to(device)
+    # pipe.scheduler = InverseDDIMScheduler.from_config(pipe.scheduler.config)
+    # pipe.scheduler = InversePNDMScheduler.from_config(pipe.scheduler.config)
     pipe.scheduler = DPMSolverMultistepInverseScheduler.from_config(pipe.scheduler.config)
 
-    image = Image.open(args.input_image).resize((1024,1024), Image.Resampling.LANCZOS)
-    x0 = np.array(image)/255
-    x0 = torch.from_numpy(x0).permute(2, 0, 1).unsqueeze(dim=0).repeat(1, 1, 1, 1).to(device)
-    x0 = (x0 - 0.5) * 2.
-    with torch.no_grad():
-        img_latents = pipe.vae.encode(x0.float()).latent_dist.sample().to(device)
-        img_latents *= pipe.vae.config.scaling_factor
+    image = Image.open(args.input_image).resize((1024,1024), Image.Resampling.LANCZOS).convert("RGB")
+    # x0 = np.array(image)/255
+    # x0 = torch.from_numpy(x0).permute(2, 0, 1).unsqueeze(dim=0).repeat(1, 1, 1, 1).to(device)
+    # x0 = (x0 - 0.5) * 2.
+    # with torch.no_grad():
+    #     img_latents = pipe.vae.encode(x0.float()).latent_dist.sample().to(device)
+    #     img_latents *= pipe.vae.config.scaling_factor
     
     prompt_str = ""
     outputs = pipe(
@@ -40,12 +44,11 @@ if __name__=="__main__":
         guidance_scale=1,
         num_inference_steps=args.num_inference_steps,
         output_type="latent",
-        latents = img_latents
+        image = image
     )
 
     noisy_latent = outputs["images"][0]
     print(noisy_latent.mean(), noisy_latent.std())
-    #noise = torch.randn_like(noise)
     
     del pipe
     

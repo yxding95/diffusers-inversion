@@ -2,9 +2,9 @@ import torch
 import argparse
 from PIL import Image
 from inverse_pipeline import InversePipeline
-from diffusers import StableDiffusionPipeline, DDIMScheduler, PNDMScheduler, EulerDiscreteScheduler, DPMSolverMultistepInverseScheduler, DPMSolverMultistepScheduler
+from diffusers import StableDiffusionPipeline, DDIMScheduler, PNDMScheduler, EulerDiscreteScheduler, DPMSolverMultistepInverseScheduler, DPMSolverMultistepScheduler,StableDiffusionXLPipeline
 from schedulers import InverseDDIMScheduler, InversePNDMScheduler, InverseEulerDiscreteScheduler
-from clip import ExceptionCLIPTextModel
+from clip import ExceptionCLIPTextModel, ExceptionCLIPTextModelWithProj
 
 if torch.cuda.is_available():
     device = "cuda"
@@ -17,14 +17,17 @@ if __name__=="__main__":
     parser.add_argument('--results_folder', type=str, default='outputs/')
     parser.add_argument('--num_inference_steps', type=int, default=20)
     parser.add_argument('--model_path', type=str, default="stabilityai/stable-diffusion-2-1-base")
+    # parser.add_argument('--model_path', type=str, default="stabilityai/stable-diffusion-xl-base-1.0")
     args = parser.parse_args()
-
+    mode = "DDIM"
+    prefix = f"{args.input_image.split('/')[-1].split('.')[0]}_{mode}"
+    
     exclip = ExceptionCLIPTextModel.from_pretrained(args.model_path, subfolder="text_encoder").to(device)
     pipe = InversePipeline.from_pretrained(args.model_path, text_encoder=exclip).to(device)
-    #pipe = StableDiffusionPipeline.from_pretrained(args.model_path, text_encoder=exclip).to(device)
+    # pipe = InversePipeline.from_pretrained(args.model_path).to(device)
     pipe.scheduler = DPMSolverMultistepInverseScheduler.from_config(pipe.scheduler.config)
 
-    image = Image.open(args.input_image).resize((512,512), Image.Resampling.LANCZOS)
+    image = Image.open(args.input_image).resize((512,512), Image.Resampling.LANCZOS).convert('RGB')
     prompt_str = ""
     outputs = pipe(
         prompt_str, 
@@ -34,13 +37,12 @@ if __name__=="__main__":
     )
 
     noise_image, noise, decode_image = outputs["images"][0], outputs["noise"][0], outputs["decode_images"][0]
-    noise_image.save(args.results_folder + f"{args.input_image.split('/')[-1].split('.')[0]}_noise.jpg")
-    decode_image.save(args.results_folder + f"{args.input_image.split('/')[-1].split('.')[0]}_decode.jpg")
+    noise_image.save(args.results_folder + f"{prefix}_noise.jpg")
+    decode_image.save(args.results_folder + f"{prefix}_decode.jpg")
 
-    print(noise.mean(), noise.std())
-    #noise = torch.randn_like(noise)
+    print("Noise mean: ", noise.mean(), "Noise std: ", noise.std())
     denoise_pipe = StableDiffusionPipeline.from_pretrained(args.model_path, text_encoder=exclip).to(device)
-    denoise_pipe.scheduler = DPMSolverMultistepScheduler.from_config(denoise_pipe.scheduler.config)
+    pipe.scheduler = DPMSolverMultistepScheduler.from_config(pipe.scheduler.config)
     outputs = denoise_pipe(
         prompt_str, 
         guidance_scale=1,
@@ -48,7 +50,7 @@ if __name__=="__main__":
         latents=noise.unsqueeze(0)
     ) 
     recon_image = outputs["images"][0]
-    recon_image.save(args.results_folder + f"{args.input_image.split('/')[-1].split('.')[0]}_recon.jpg")
+    recon_image.save(args.results_folder + f"{prefix}_recon.jpg")
 
 
 
