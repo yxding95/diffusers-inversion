@@ -6,8 +6,10 @@ import numpy as np
 import torch
 
 from diffusers import EulerDiscreteScheduler
-from diffusers.utils import BaseOutput
+from diffusers.utils import BaseOutput, logging
 from diffusers.utils.torch_utils import randn_tensor
+
+logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
 @dataclass
 # Copied from diffusers.schedulers.scheduling_ddpm.DDPMSchedulerOutput with DDPM->EulerDiscrete
@@ -235,10 +237,11 @@ class InverseEulerDiscreteScheduler(EulerDiscreteScheduler):
         # 2. Convert to an ODE derivative
         derivative = (sample - pred_original_sample) / sigma_hat
 
-        dt = self.sigmas[self.step_index - 1] - sigma_hat
-        #dt = sigma_hat - self.sigmas[self.step_index + 1]
+        #dt = self.sigmas[self.step_index - 1] - sigma_hat
+        dt = sigma_hat - self.sigmas[self.step_index + 1]
 
-        prev_sample = sample - derivative * dt
+        prev_sample = sample + derivative * dt
+        print(sample.mean(), derivative.mean())
 
         # Cast sample back to model compatible dtype
         prev_sample = prev_sample.to(model_output.dtype)

@@ -2,8 +2,9 @@ import torch
 import argparse
 from PIL import Image
 from inverse_pipeline import InversePipeline
-from diffusers import StableDiffusionPipeline, DDIMScheduler, PNDMScheduler, EulerDiscreteScheduler
+from diffusers import StableDiffusionPipeline, DDIMScheduler, PNDMScheduler, EulerDiscreteScheduler, DPMSolverMultistepInverseScheduler, DPMSolverMultistepScheduler
 from schedulers import InverseDDIMScheduler, InversePNDMScheduler, InverseEulerDiscreteScheduler
+from clip import ExceptionCLIPTextModel
 
 if torch.cuda.is_available():
     device = "cuda"
@@ -14,12 +15,13 @@ if __name__=="__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument('--input_image', type=str, default='assets/test_images/spiderman.png')
     parser.add_argument('--results_folder', type=str, default='outputs/')
-    parser.add_argument('--num_inference_steps', type=int, default=30)
+    parser.add_argument('--num_inference_steps', type=int, default=20)
     parser.add_argument('--model_path', type=str, default="../../stable-diffusion-2-1-base/")
     args = parser.parse_args()
 
-    pipe = InversePipeline.from_pretrained(args.model_path).to(device)
-    pipe.scheduler = InverseDDIMScheduler.from_config(pipe.scheduler.config)
+    exclip = ExceptionCLIPTextModel.from_pretrained(args.model_path, subfolder="text_encoder").to(device)
+    pipe = InversePipeline.from_pretrained(args.model_path, text_encoder=exclip).to(device)
+    pipe.scheduler = DPMSolverMultistepInverseScheduler.from_config(pipe.scheduler.config)
 
     image = Image.open(args.input_image).resize((512,512), Image.Resampling.LANCZOS)
     prompt_str = ""
@@ -36,8 +38,8 @@ if __name__=="__main__":
 
     print(noise.mean(), noise.std())
     #noise = torch.randn_like(noise)
-    denoise_pipe = StableDiffusionPipeline.from_pretrained(args.model_path).to(device)
-    pipe.scheduler = DDIMScheduler.from_config(pipe.scheduler.config)
+    denoise_pipe = StableDiffusionPipeline.from_pretrained(args.model_path, text_encoder=exclip).to(device)
+    pipe.scheduler = DPMSolverMultistepScheduler.from_config(pipe.scheduler.config)
     outputs = denoise_pipe(
         prompt_str, 
         guidance_scale=1,
