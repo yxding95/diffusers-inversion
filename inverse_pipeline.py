@@ -12,6 +12,7 @@ from diffusers.loaders import (
 from diffusers.models.lora import adjust_lora_scale_text_encoder
 #from diffusers.pipelines.stable_diffusion.pipeline_output import StableDiffusionPipelineOutput
 from diffusers.image_processor import PipelineImageInput
+from diffusers import DPMSolverMultistepInverseScheduler, DDIMInverseScheduler
 
 from dataclasses import dataclass
 import numpy as np
@@ -229,25 +230,24 @@ class InversePipeline(StableDiffusionPipeline):
                 x0_enc = self.vae.encode(x0.float()).latent_dist.sample().to(device)
             latents = x0_enc = self.vae.config.scaling_factor * x0_enc
 
-            # Decode and return the image
-            with torch.no_grad():
-                x0_dec = self.decode_latents(x0_enc.detach())
-            image_x0_dec = self.numpy_to_pil(x0_dec)
-        else:
-            image_x0_dec = [None]
+        # Decode and return the image
+        with torch.no_grad():
+            x0_dec = self.decode_latents(latents.detach())
+        image_x0_dec = self.numpy_to_pil(x0_dec)
+
 
         # 5. Prepare latent variables
         num_channels_latents = self.unet.config.in_channels
-        latents = self.prepare_latents(
-            batch_size * num_images_per_prompt,
-            num_channels_latents,
-            height,
-            width,
-            prompt_embeds.dtype,
-            device,
-            generator,
-            latents,
-        )
+        # latents = self.prepare_latents(
+        #     batch_size * num_images_per_prompt,
+        #     num_channels_latents,
+        #     height,
+        #     width,
+        #     prompt_embeds.dtype,
+        #     device,
+        #     generator,
+        #     latents,
+        # )
 
         # 6. Prepare extra step kwargs. TODO: Logic should ideally just be moved out of the pipeline
         extra_step_kwargs = self.prepare_extra_step_kwargs(generator, eta)
@@ -267,6 +267,8 @@ class InversePipeline(StableDiffusionPipeline):
         num_warmup_steps = len(timesteps) - num_inference_steps * self.scheduler.order
         self._num_timesteps = len(timesteps)
 
+        if not isinstance(self.scheduler, (DDIMInverseScheduler, DPMSolverMultistepInverseScheduler)):
+            timesteps = timesteps.flip(0)[1:-1]
         with self.progress_bar(total=num_inference_steps) as progress_bar:
             #for i, t in enumerate(timesteps.flip(0)[1:-1]):
             for i, t in enumerate(timesteps):
@@ -317,6 +319,8 @@ class InversePipeline(StableDiffusionPipeline):
                     if callback is not None and i % callback_steps == 0:
                         step_idx = i // getattr(self.scheduler, "order", 1)
                         callback(step_idx, t, latents)
+
+        latents = latents / self.scheduler.init_noise_sigma
 
         if not output_type == "latent":
             image = self.vae.decode(latents / self.vae.config.scaling_factor, return_dict=False, generator=generator)[

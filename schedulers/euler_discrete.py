@@ -52,7 +52,7 @@ class InverseEulerDiscreteScheduler(EulerDiscreteScheduler):
             self._init_step_index(timestep)
 
         sigma = self.sigmas[self.step_index]
-        print(sigma)
+        
         sample = sample / ((sigma**2 + 1) ** 0.5)
 
         self.is_scale_input_called = True
@@ -237,11 +237,11 @@ class InverseEulerDiscreteScheduler(EulerDiscreteScheduler):
         # 2. Convert to an ODE derivative
         derivative = (sample - pred_original_sample) / sigma_hat
 
-        #dt = self.sigmas[self.step_index - 1] - sigma_hat
-        dt = sigma_hat - self.sigmas[self.step_index + 1]
-
+        #dt = self.sigmas[self.step_index + 1] - sigma_hat
+        dt = self.sigmas[self.step_index - 1] - sigma_hat 
+        #print(self.sigmas, dt)
         prev_sample = sample + derivative * dt
-        print(sample.mean(), derivative.mean())
+        #prev_sample = sample - derivative * dt
 
         # Cast sample back to model compatible dtype
         prev_sample = prev_sample.to(model_output.dtype)

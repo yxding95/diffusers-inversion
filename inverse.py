@@ -15,13 +15,15 @@ if __name__=="__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument('--input_image', type=str, default='assets/test_images/spiderman.png')
     parser.add_argument('--results_folder', type=str, default='outputs/')
-    parser.add_argument('--num_inference_steps', type=int, default=20)
+    parser.add_argument('--num_inference_steps', type=int, default=50)
     parser.add_argument('--model_path', type=str, default="../../stable-diffusion-2-1-base/")
+    #parser.add_argument('--model_path', type=str, default="../sd-turbo/")
     args = parser.parse_args()
 
     exclip = ExceptionCLIPTextModel.from_pretrained(args.model_path, subfolder="text_encoder").to(device)
     pipe = InversePipeline.from_pretrained(args.model_path, text_encoder=exclip).to(device)
-    pipe.scheduler = DPMSolverMultistepInverseScheduler.from_config(pipe.scheduler.config)
+    #pipe = StableDiffusionPipeline.from_pretrained(args.model_path, text_encoder=exclip).to(device)
+    pipe.scheduler = InverseEulerDiscreteScheduler.from_config(pipe.scheduler.config)
 
     image = Image.open(args.input_image).resize((512,512), Image.Resampling.LANCZOS)
     prompt_str = ""
@@ -38,8 +40,9 @@ if __name__=="__main__":
 
     print(noise.mean(), noise.std())
     #noise = torch.randn_like(noise)
+    #prompt_str = "spiderman"
     denoise_pipe = StableDiffusionPipeline.from_pretrained(args.model_path, text_encoder=exclip).to(device)
-    pipe.scheduler = DPMSolverMultistepScheduler.from_config(pipe.scheduler.config)
+    denoise_pipe.scheduler = EulerDiscreteScheduler.from_config(denoise_pipe.scheduler.config)
     outputs = denoise_pipe(
         prompt_str, 
         guidance_scale=1,
